@@ -1,12 +1,48 @@
 
-import {createContext,useContext,useState} from "react";
+import {createContext,useContext,useEffect,useState} from "react";
 import api from "../api/client";
 
 const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
+
   const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  const saveTokens = (data) => {
+    sessionStorage.setItem("access_token", data.access);
+    sessionStorage.setItem("refresh_token", data.refresh);
+  };
+
+  const fetchUser = async () => {
+    const token = sessionStorage.getItem("access_token");
+
+    if (!token) {
+      setUser(null);
+      return null;
+    }
+
+    try {
+      const response = await api.get("/auth/me/");
+      setUser(response.data);
+      return response.data;
+
+    } catch {
+      setUser(null);
+      sessionStorage.removeItem("access_token");
+      sessionStorage.removeItem("refresh_token");
+      return null;
+    }
+  };
+
+  useEffect(() => {
+    fetchUser().finally(() => setLoading(false));
+  }, []);
+
+  const register = async (formData) => {
+    await api.post("/auth/register/", formData);
+    return login(formData);
+  };
 
   const login = async (credentials) => {
     const response = await api.post(
@@ -14,25 +50,13 @@ export function AuthProvider({ children }) {
       credentials
     );
 
-    const { access, refresh } = response.data;
-
-    sessionStorage.setItem("access_token", access);
-    sessionStorage.setItem("refresh_token", refresh);
+    saveTokens(response.data);
 
     const profile = await api.get("/auth/me/");
 
     setUser(profile.data);
 
     return profile.data;
-  };
-
-  const register = async (userData) => {
-    await api.post("/auth/register/", userData);
-
-    return login({
-      email: userData.email,
-      password: userData.password,
-    });
   };
 
   const logout = async () => {
@@ -49,31 +73,13 @@ export function AuthProvider({ children }) {
     }
   };
 
-  const fetchUser = async () => {
-    const token = sessionStorage.getItem("access_token");
-
-    if (!token) return null;
-
-    try {
-      const response = await api.get("/auth/me/");
-      setUser(response.data);
-      return response.data;
-    } catch {
-      sessionStorage.removeItem("access_token");
-      sessionStorage.removeItem("refresh_token");
-      setUser(null);
-      return null;
-    }
-  };
-
   return (
     <AuthContext.Provider
       value={{
         user,
         loading,
-        setLoading,
-        login,
         register,
+        login,
         logout,
         fetchUser,
       }}
